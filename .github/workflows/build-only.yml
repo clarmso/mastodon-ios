@@ -107,8 +107,7 @@ jobs:
       
       - name: Run UI Smoke Test on ${{ matrix.device_name }}
         run: |
-          bundle exec fastlane run scan \
-            scheme:"Mastodon" \
-            destination:"${{ matrix.destination }}" \
-            only_testing:"MastodonUITests/MastodonUITests/testSmoke" \
-            test_without_building:true
+          xcodebuild test-without-building \
+            -scheme "Mastodon" \
+            -destination "${{ matrix.destination }}" \
+            -only-testing:MastodonUITests/MastodonUITests/testSmoke
