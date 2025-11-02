@@ -17,8 +17,57 @@ on:
 
 jobs:
   build:
-    name: CI build
+    name: Build App
     runs-on: macos-15
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+    steps:
+      - name: Repository
+        uses: actions/checkout@v2
+      
+      - name: Setup Build Environment
+        env:
+          NotificationEndpointDebug: ${{ secrets.NotificationEndpointDebug }}
+          NotificationEndpointRelease: ${{ secrets.NotificationEndpointRelease }}
+        run: exec ./.github/scripts/setup.sh
+      
+      - name: Select required Xcode version
+        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
+      
+      - name: Generate cache key
+        id: cache-key
+        run: |
+          echo "key=derived-data-${{ github.sha }}-${{ hashFiles('**/Podfile.lock', '**/Package.resolved', '**/*.xcodeproj/project.pbxproj') }}" >> $GITHUB_OUTPUT
+      
+      - name: Cache Xcode Derived Data
+        uses: actions/cache@v3
+        id: cache-derived-data
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/Library/Caches/com.apple.dt.Xcode
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            derived-data-${{ github.sha }}-
+            derived-data-
+      
+      - name: Build App
+        run: bundle exec fastlane ios build_only
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/Build/Products
+            *.app
+            *.ipa
+          retention-days: 1
+
+  test:
+    name: Test on Multiple Devices
+    runs-on: macos-15
+    needs: build
     strategy:
       matrix:
         destination:
@@ -29,18 +78,37 @@ jobs:
     steps:
       - name: Repository
         uses: actions/checkout@v2
+      
       - name: Setup Build Environment
         env:
           NotificationEndpointDebug: ${{ secrets.NotificationEndpointDebug }}
           NotificationEndpointRelease: ${{ secrets.NotificationEndpointRelease }}
         run: exec ./.github/scripts/setup.sh
+      
       - name: Select required Xcode version
         run: sudo xcode-select -switch /Applications/Xcode_16.4.app
-      - name: Build App
-        run: bundle exec fastlane ios build_only
+      
+      - name: Restore Xcode Derived Data
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            ~/Library/Caches/com.apple.dt.Xcode
+          key: ${{ needs.build.outputs.cache-key }}
+          restore-keys: |
+            derived-data-${{ github.sha }}-
+            derived-data-
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: ./artifacts
+      
       - name: Run UI Smoke Test on ${{ matrix.device_name }}
         run: |
           bundle exec fastlane run scan \
             scheme:"Mastodon" \
             destination:"${{ matrix.destination }}" \
-            only_testing:"MastodonUITests/MastodonUITests/testSmoke"
+            only_testing:"MastodonUITests/MastodonUITests/testSmoke" \
+            test_without_building:true
