@@ -39,7 +39,8 @@ jobs:
       - name: Build App
         run: bundle exec fastlane ios build_only
       - name: Run UI Smoke Test on ${{ matrix.device_name }}
-        run: bundle exec fastlane run scan \
-          scheme:"Mastodon" \
-          destination:"${{ matrix.destination }}" \
-          only_testing:"MastodonUITests/MastodonUITests/testSmoke"
+        run: |
+          bundle exec fastlane run scan \
+            scheme:"Mastodon" \
+            destination:"${{ matrix.destination }}" \
+            only_testing:"MastodonUITests/MastodonUITests/testSmoke"
